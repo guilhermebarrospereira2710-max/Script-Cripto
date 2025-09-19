@@ -1,0 +1,42 @@
+import requests
+import time
+from datetime import datetime, timedelta
+
+# URL da BinanceAPI (pra escrever endpoints mais rápido)
+binanceURL = "https://api.binance.com/api/v3"
+
+# Como eu quero ver só as moedas novas (primeira trade nas últimas 24 horas),
+# eu preciso ver todas as moedas e depois filtrá-las
+exchange_info = requests.get(f"{binanceURL}/exchangeInfo").json()
+all_symbols = [symbol['symbol'] for symbol in exchange_info['symbols']]
+
+# Filtro de 24 horas (pra ver só as moedas recentes)
+last24hours = datetime.now() - timedelta(hours=24)
+last24hoursinms = int(last24hours.timestamp() * 1000)
+new_coins_list = []
+
+for symbol in all_symbols:
+    try:
+        # Recuperando os dados das últimas 24 horas pra um par
+        ticker_data = requests.get(f"{binanceURL}/ticker/24hr", params={'symbol': symbol.endswith("USDT")}).json()
+
+        if 'firstId' in ticker_data and ticker_data['firstId']:
+            first_trade = requests.get(f"{binanceURL}/historicalTrades", params={
+                'symbol': symbol,
+                'fromId': ticker_data['firstId'],
+                'limit': 1
+            }).json()
+
+            if first_trade:
+                first_trade_time = first_trade[0]['time']
+                
+                if first_trade_time >= last24hoursinms:
+                    # Recuperando a moeda base ('BTC' no caso de 'BTCUSDT')
+                    base_asset = next(item for item in exchange_info['symbols'] if item["symbol"] == symbol)['baseAsset']
+                    new_coins_list.append(base_asset)
+    
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching data for {symbol}: {e}")
+    time.sleep(0.1)
+    
+print("New coins listed in the last 24 hours:", new_coins_list)
